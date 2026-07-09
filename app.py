@@ -1,5 +1,6 @@
 import streamlit as st
 from openai import OpenAI
+from questions_data import Master_Questions_Database
 from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Streamlit Chat", page_icon=":speech_balloon:")
@@ -18,10 +19,26 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chat_completed" not in st.session_state:
     st.session_state.chat_completed = False
+if "current_question_index" not in st.session_state:
+    st.session_state.current_question_index = 0
+if "set_of_questions" not in st.session_state:
+    st.session_state.set_of_questions = []
+if "culture_note" not in st.session_state:
+    st.session_state.culture_note = ""
 
 def complete_setup():
-    st.session_state.setup_completed = True
-
+    if not st.session_state["name"].strip():
+        st.error("Please enter your name.")
+    elif not st.session_state["experience"].strip():
+        st.error("Please describe your experience.")
+    elif not st.session_state["skills"].strip():
+            st.error("Please list your skills.")
+    else:
+        st.session_state["set_of_questions"] = Master_Questions_Database[st.session_state["company"]][st.session_state["position"]]
+        st.session_state["culture_note"] = Master_Questions_Database[st.session_state["company"]]["culture_note"]
+        st.session_state.setup_completed = True
+        st.write(f"**Your setup:** {st.session_state['setup_completed']}")
+            
 def show_feedback():
     st.session_state.feedback_shown = True
 
@@ -73,18 +90,16 @@ if not st.session_state.setup_completed:
         "Choose company",
         ("Google", "Microsoft", "Amazon", "Facebook", "Apple")
     )
-    # st.write(f"**Level:** {st.session_state['level']}")
-    # st.write(f"**Position:** {st.session_state['position']}")
-    # st.write(f"**Company:** {st.session_state['company']}")
 
     if st.button("Start Interview", on_click=complete_setup):
-        st.write("Setup completed. You can now start the interview.")
+        st.write("Processing...")
+        
 
 #########################################################
 
 if st.session_state.setup_completed and not st.session_state.feedback_shown and not st.session_state.chat_completed:
     st.info(
-        """Start by introducing yourself.""",
+        f"""Good afternoon {st.session_state['name']}! Let's get started with the interview.""",
         icon = "👋"
     )
 
@@ -97,7 +112,7 @@ if st.session_state.setup_completed and not st.session_state.feedback_shown and 
     if not st.session_state.messages:
         st.session_state.messages = [{
             "role": "system",
-            "content": (f"You are an HR executive that interviews an interviewee called {st.session_state['name']} with experience in {st.session_state['experience']} and skills in {st.session_state['skills']}. You should interview them for the position {st.session_state['level']} {st.session_state['position']} at {st.session_state['company']}.")
+            "content": (f"You are an HR executive that interviews an interviewee called {st.session_state['name']} with experience in {st.session_state['experience']} and skills in {st.session_state['skills']}. You should interview them for the position {st.session_state['level']} {st.session_state['position']} at {st.session_state['company']}. Phrase follow-ups questions using this company's lens: {st.session_state['culture_note']}. Calibrate expected depth for a {st.session_state['level']} candidate — a Junior should get more benefit of the doubt on scope, a Senior should be pushed on ownership and tradeoffs. You are neutral, precise, and economical with words. You do not praise or criticize answers verbally. ell it what to do instead of praising: transition directly into the next question or follow-up with no evaluative commentary in between. Real interviewers usually just say 'Okay, next—' or nothing at all before pivoting. Do not use words/phrases like Great, Perfect, Awesome, or Nice job,or any exclamation-point affirmations)")
         }]
 
     for message in st.session_state.messages:
@@ -105,13 +120,18 @@ if st.session_state.setup_completed and not st.session_state.feedback_shown and 
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    if st.session_state.user_message_count < 5:
-        if prompt := st.chat_input("Escribe tu pregunta:",max_chars=1000):
+    if st.session_state.user_message_count <= 5:
+        if prompt := st.chat_input("Escribe tu respuesta:",max_chars=1000):
             st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            current_index = st.session_state["current_question_index"]
+            question = st.session_state["set_of_questions"][current_index]
+            st.session_state.messages.append({"role": "system", "content": f"Respond accordily to the response the interviewee gave and then incorporate this {question}, or ask a natural transition into it"})
+            st.session_state["current_question_index"] += 1
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            if st.session_state.user_message_count < 4:            
+            if st.session_state.user_message_count <= 4:            
                 with st.chat_message("assistant"):
                     stream =  client.chat.completions.create( 
                         model = st.session_state.openai_model,
@@ -124,7 +144,9 @@ if st.session_state.setup_completed and not st.session_state.feedback_shown and 
                     response = st.write_stream(stream)
                 st.session_state.messages.append({"role": "assistant", "content": response})
             st.session_state.user_message_count += 1
-    if st.session_state.user_message_count >= 5:
+    if st.session_state.user_message_count ==4:
+        st.session_state.messages.append({"role": "system", "content": f"The interviewee has answered 5 questions. Ask them to answer one more question and then the interview will be completed."})
+    if st.session_state.user_message_count == 5:
         st.session_state.chat_completed = True
         st.write("You have reached the maximum number of questions.")
 
@@ -153,5 +175,5 @@ if st.session_state.feedback_shown:
     )
     st.write(feedback_completion.choices[0].message.content)
 
-if st.button("Restart Interview", type="primary"):
-    streamlit_js_eval(js_expressions="parent.window.location.reload()")
+    if st.button("Restart Interview", type="primary"):
+        streamlit_js_eval(js_expressions="parent.window.location.reload()")
