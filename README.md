@@ -36,7 +36,7 @@ The codebase requires an authenticated connection handler pointing to an active 
 Store your API credentials in `.streamlit/secrets.toml`:
 
 ```toml
-OPENAI_API_KEY = "your-actual-production-or-test-api-key"
+OPENAI_API_KEY = ""
 
 ```
 
